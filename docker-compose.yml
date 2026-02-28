@@ -40,6 +40,8 @@ services:
     ports:
       # Gateway API port (override HOST_PORT if 42617 is taken)
       - ${ZEROCLAW_GATEWAY_PORT:-42617}
+      # For DokPloy healthcheck
+      - 4500
     
     # Resource limits
     deploy:
