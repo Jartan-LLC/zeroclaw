@@ -14,9 +14,12 @@ ZeroClaw logs the resolved config on startup at `INFO` level:
 
 - `Config loaded` with fields: `path`, `workspace`, `source`, `initialized`
 
-Schema export command:
+CLI commands for config inspection and modification:
 
-- `zeroclaw config schema` (prints JSON Schema draft 2020-12 to stdout)
+- `zeroclaw config show` — print effective config as JSON (secrets masked)
+- `zeroclaw config get <key>` — query a value by dot-path (e.g. `zeroclaw config get gateway.port`)
+- `zeroclaw config set <key> <value>` — update a value and save to `config.toml`
+- `zeroclaw config schema` — print JSON Schema (draft 2020-12) to stdout
 
 ## Core Keys
 
@@ -888,6 +891,17 @@ allowed_roots = ["~/Desktop/projects", "/opt/shared-repo"]
 Notes:
 
 - Memory context injection ignores legacy `assistant_resp*` auto-save keys to prevent old model-authored summaries from being treated as facts.
+- Observation memory is available via tool `memory_observe`, which stores entries under category `observation` by default (override with `category` when needed).
+
+Example (tool-call payload):
+
+```json
+{
+  "observation": "User asks for brief release notes when CI is green.",
+  "source": "chat",
+  "confidence": 0.9
+}
+```
 
 ## `[[model_routes]]` and `[[embedding_routes]]`
 

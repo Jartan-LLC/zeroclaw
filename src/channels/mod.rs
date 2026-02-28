@@ -19,6 +19,7 @@ pub mod cli;
 pub mod dingtalk;
 pub mod discord;
 pub mod email_channel;
+pub mod github;
 pub mod imessage;
 pub mod irc;
 #[cfg(feature = "channel-lark")]
@@ -27,6 +28,7 @@ pub mod linq;
 #[cfg(feature = "channel-matrix")]
 pub mod matrix;
 pub mod mattermost;
+pub mod napcat;
 pub mod nextcloud_talk;
 pub mod nostr;
 pub mod qq;
@@ -47,6 +49,7 @@ pub use cli::CliChannel;
 pub use dingtalk::DingTalkChannel;
 pub use discord::DiscordChannel;
 pub use email_channel::EmailChannel;
+pub use github::GitHubChannel;
 pub use imessage::IMessageChannel;
 pub use irc::IrcChannel;
 #[cfg(feature = "channel-lark")]
@@ -55,6 +58,7 @@ pub use linq::LinqChannel;
 #[cfg(feature = "channel-matrix")]
 pub use matrix::MatrixChannel;
 pub use mattermost::MattermostChannel;
+pub use napcat::NapcatChannel;
 pub use nextcloud_talk::NextcloudTalkChannel;
 pub use nostr::NostrChannel;
 pub use qq::QQChannel;
@@ -335,7 +339,7 @@ fn conversation_memory_key(msg: &traits::ChannelMessage) -> String {
 fn conversation_history_key(msg: &traits::ChannelMessage) -> String {
     // QQ uses thread_ts as a passive-reply message id, not a thread identifier.
     // Using it in history keys would reset context on every incoming message.
-    if msg.channel == "qq" {
+    if msg.channel == "qq" || msg.channel == "napcat" {
         return format!("{}_{}", msg.channel, msg.sender);
     }
 
@@ -4721,6 +4725,17 @@ fn collect_configured_channels(
         });
     }
 
+    if let Some(ref gh) = config.channels_config.github {
+        channels.push(ConfiguredChannel {
+            display_name: "GitHub",
+            channel: Arc::new(GitHubChannel::new(
+                gh.access_token.clone(),
+                gh.api_base_url.clone(),
+                gh.allowed_repos.clone(),
+            )),
+        });
+    }
+
     if let Some(ref wati_cfg) = config.channels_config.wati {
         channels.push(ConfiguredChannel {
             display_name: "WATI",
@@ -4834,6 +4849,16 @@ fn collect_configured_channels(
                     qq.environment.clone(),
                 )),
             });
+        }
+    }
+
+    if let Some(ref napcat_cfg) = config.channels_config.napcat {
+        match NapcatChannel::from_config(napcat_cfg.clone()) {
+            Ok(channel) => channels.push(ConfiguredChannel {
+                display_name: "Napcat",
+                channel: Arc::new(channel),
+            }),
+            Err(err) => tracing::warn!("Napcat channel configuration invalid: {err}"),
         }
     }
 
@@ -5085,6 +5110,10 @@ pub async fn start_channels(config: Config) -> Result<()> {
         (
             "memory_store",
             "Save to memory to preserve durable preferences, decisions, and key context.",
+        ),
+        (
+            "memory_observe",
+            "Store observation memory for long-horizon patterns, signals, and evolving context.",
         ),
         (
             "memory_recall",
@@ -9716,6 +9745,7 @@ BTC is currently around $65,000 based on latest tool output."#
             }],
             prompts: vec!["Always run cargo test before final response.".into()],
             location: None,
+            always: false,
         }];
 
         let prompt = build_system_prompt(ws.path(), "model", &[], &skills, None, None);
@@ -9751,6 +9781,7 @@ BTC is currently around $65,000 based on latest tool output."#
             }],
             prompts: vec!["Always run cargo test before final response.".into()],
             location: None,
+            always: false,
         }];
 
         let prompt = build_system_prompt_with_mode(
@@ -9792,6 +9823,7 @@ BTC is currently around $65,000 based on latest tool output."#
             }],
             prompts: vec!["Use <tool_call> and & keep output \"safe\"".into()],
             location: None,
+            always: false,
         }];
 
         let prompt = build_system_prompt(ws.path(), "model", &[], &skills, None, None);
@@ -9948,6 +9980,34 @@ BTC is currently around $65,000 based on latest tool output."#
         };
 
         assert_eq!(conversation_history_key(&msg1), "qq_user_open_1");
+        assert_eq!(
+            conversation_history_key(&msg1),
+            conversation_history_key(&msg2)
+        );
+    }
+
+    #[test]
+    fn conversation_history_key_ignores_napcat_message_id_thread() {
+        let msg1 = traits::ChannelMessage {
+            id: "msg_1".into(),
+            sender: "user_1001".into(),
+            reply_target: "user:1001".into(),
+            content: "first".into(),
+            channel: "napcat".into(),
+            timestamp: 1,
+            thread_ts: Some("msg-a".into()),
+        };
+        let msg2 = traits::ChannelMessage {
+            id: "msg_2".into(),
+            sender: "user_1001".into(),
+            reply_target: "user:1001".into(),
+            content: "second".into(),
+            channel: "napcat".into(),
+            timestamp: 2,
+            thread_ts: Some("msg-b".into()),
+        };
+
+        assert_eq!(conversation_history_key(&msg1), "napcat_user_1001");
         assert_eq!(
             conversation_history_key(&msg1),
             conversation_history_key(&msg2)
